@@ -7,6 +7,7 @@
 #include <utility>
 #include <optional>
 #include <sstream>
+#include <string_view>
 
 enum class NoteStatus
 {
@@ -23,6 +24,11 @@ struct Note
     time_t update_time;
     NoteStatus status{NoteStatus::active};
 };
+
+// TODO stage2/day2：为 Note 选择一种有明确语义的比较或格式化操作。
+// 语法参考（二选一即可）：
+//   bool operator==(const Note&) const = default;
+//   std::ostream& operator<<(std::ostream& out, const Note& note);
 
 class NoteStore {
 public:
@@ -44,7 +50,9 @@ public:
     }
 
     // 找到时返回 Note 副本，找不到时返回 std::nullopt。
-    [[nodiscard]] std::optional<Note> find_by_id(long id) const
+    // TODO stage2/day1：从 main 中分别用整数 ID 和字符串标题调用两个 find 重载，
+    // 并确认重载由参数类型决定（不能只用返回类型区分重载）。
+    [[nodiscard]] std::optional<Note> find(long id) const
     {
         for (const Note& note : notes_)
         {
@@ -56,7 +64,24 @@ public:
         return std::nullopt;
     }
 
+    // TODO stage2/day1：把标题查询参数改为 std::string_view，练习非拥有只读视图。
+    // 参考签名：std::optional<Note> find(std::string_view title) const;
+    // string_view 不拥有字符；不要把它保存到 NoteStore 或 Note 中。
+    [[nodiscard]] std::optional<Note> find(const std::string_view title) const
+    {
+        for (const Note& note : notes_)
+        {
+            if (note.title == title)
+            {
+                return note;
+            }
+        }
+        return std::nullopt;
+    }
+
     // 删除成功返回 true；找不到对应 ID 时返回 false。
+    // TODO stage2/day2：说明为什么“未找到”使用 optional/bool 表达，
+    // 而不是抛异常；try/catch 留给真正异常的失败情形。std::expected 属于 C++23。
     bool delete_by_id(long id)
     {
         for (auto it = notes_.begin(); it != notes_.end(); ++it)
@@ -74,6 +99,10 @@ private:
     long next_id_{1};
     std::vector<Note> notes_;
 };
+
+// TODO stage2/day1（可选）：写一个接收连续只读 Note 序列的辅助函数，练习 std::span。
+// 参考签名：void display_notes(std::span<const Note> notes);
+// 需要 <span>；span 不拥有元素，不能比底层 vector 活得更久。
 
 static void display(const Note& note)
 {
@@ -107,6 +136,11 @@ static bool read_id(std::istringstream& input, long& id)
     return input.eof();
 }
 
+static bool read_string(std::istringstream& input, std::string& value)
+{
+    return static_cast<bool>(std::getline(input >> std::ws, value));
+}
+
 int main()
 {
     NoteStore store;
@@ -136,6 +170,7 @@ int main()
             std::cout << "Content: ";
             if (!std::getline(std::cin, content)) break;
 
+            // TODO stage2/day2：定义并实现空标题/空正文的校验策略；失败时不新增笔记。
             const long id = store.add(std::move(title), std::move(content));
             std::cout << "Added note " << id << ".\n";
         }
@@ -153,6 +188,7 @@ int main()
         else if (command == "show" || command == "delete")
         {
             long id{};
+            // TODO stage2/day2：手动检查缺少 ID、非整数、溢出和多余字符等输入。
             if (!read_id(input, id))
             {
                 std::cout << "Usage: " << command << " <id>\n";
@@ -161,7 +197,7 @@ int main()
 
             if (command == "show")
             {
-                if (const auto note = store.find_by_id(id)) display(*note);
+                if (const auto note = store.find(id)) display(*note);
                 else std::cout << "No note with ID " << id << ".\n";
             }
             else if (store.delete_by_id(id))
@@ -173,8 +209,19 @@ int main()
                 std::cout << "No note with ID " << id << ".\n";
             }
         }
+        else if (command == "find")
+        {
+            std::string title;
+            if (!read_string(input, title))
+            {
+                std::cout << "Usage: " << command << " <string>\n";
+                continue;
+            }
+            if (const auto note = store.find(title)) display(*note);
+        }
         else if (!command.empty())
         {
+            // TODO stage2/day2：检查未知命令后，程序能否继续处理下一行输入。
             std::cout << "Unknown command. Type 'help' for commands.\n";
         }
     }
